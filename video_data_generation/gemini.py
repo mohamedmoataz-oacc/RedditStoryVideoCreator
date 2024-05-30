@@ -1,5 +1,6 @@
 import google.generativeai as genai
 from utils import settings
+from utils.console import print_substep
 
 
 genai.configure(api_key=settings.config["ai"]["gemini_api_key"])
@@ -75,7 +76,7 @@ def get_thumbnail(post):
 def get_video_data(post, bg_config):
     data = None
     thumbnail = None
-    print("Generating video title & description...")
+    print_substep("Generating video title, description & tags...")
     for i in range(3):
         if i != 0: print("Try:", i+1)
         try:

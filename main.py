@@ -28,7 +28,6 @@ from video_creation.final_video import make_final_video
 from video_creation.screenshot_downloader import get_screenshots_of_reddit_posts
 from video_creation.voices import save_text_to_mp3
 from utils.ffmpeg_install import ffmpeg_install
-from utils.compressor import compress_video
 
 __VERSION__ = "3.2.1"
 
@@ -47,6 +46,21 @@ print_markdown(
     "### Thanks for using this tool! Feel free to contribute to this project on GitHub! If you have any questions, feel free to join my Discord server or submit a GitHub issue. You can find solutions to many common problems in the documentation: https://reddit-video-maker-bot.netlify.app/"
 )
 checkversion(__VERSION__)
+
+class Logger(object):
+    def __init__(self):
+        self.file = 'log.txt'
+        self.backup = sys.stdout
+    
+    def write(self, obj):
+        with open(self.file, 'a', encoding="utf-8") as f:
+            f.write(obj)
+        self.backup.write(obj)
+    
+    def flush(self):
+        self.backup.flush()
+
+sys.stdout = Logger()
 
 
 def main(POST_ID=None) -> None:
@@ -67,6 +81,7 @@ def main(POST_ID=None) -> None:
     length = math.ceil(length)
     reel = length <= 60
 
+    print(reddit_object['thread_post'])
     get_screenshots_of_reddit_posts(reddit_object, number_of_comments, reel)
     if not settings.config["settings"]["debug"]["reuse_background"]:
         bg_config = {
@@ -83,20 +98,20 @@ def main(POST_ID=None) -> None:
         }
     video_path = make_final_video(number_of_comments, length, reddit_object, bg_config, reel)
     if not video_path: return False
-    video_path = compress_video(video_path)
 
     video_data, thumbnail_text = get_video_data(post_text, bg_config)
     print("Video title:", video_data['title'])
     print("Video description:", video_data['description'])
     print("Video tags:", video_data['tags'])
     
+    print_substep(f"Generating thumbnail...")
     thumbnail = generate_image(thumbnail_text, f"./assets/temp/{reddit_object['thread_id']}/thumbnail_image.png")
     thumbnail = add_text(
         thumbnail_path=thumbnail,
         text=video_data["thumbnail_text"],
         save_path=f"./assets/temp/{reddit_object['thread_id']}/thumbnail.png"
     )
-    print("Thumbnail generated successfully at:", thumbnail)
+    print_substep(f"Thumbnail generated successfully at: {thumbnail}", style="bold green")
     if not settings.config["settings"]["debug"]["no_youtube"]:
         upload_video_to_youtube(video_path, video_data, thumbnail)
 
@@ -134,10 +149,13 @@ def run():
     # elif config["settings"]["times_to_run"]:
     #     run_many(config["settings"]["times_to_run"])
     else:
-        while True:
-            status = main()
+        # main()
+        status = False
+        while not status:
+            try: status = main()
+            except Exception as e:
+                print(e)
             print("Status:", status)
-            if status: break
     
     print_substep("The video was created successfully! 🎉", style="bold green")
     print_substep(
@@ -197,3 +215,5 @@ if __name__ == "__main__":
             f'Config: {config["settings"]}'
         )
         raise err
+
+    f.close()

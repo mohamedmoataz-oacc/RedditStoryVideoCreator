@@ -4,7 +4,7 @@ from pathlib import Path
 import toml
 from rich.console import Console
 
-from utils.console import handle_input
+from utils.console import handle_input, print_substep
 
 console = Console()
 config = dict  # autocomplete
@@ -112,14 +112,15 @@ def check_toml(template_file, config_file) -> Tuple[bool, Dict]:
     try:
         template = toml.load(template_file)
     except Exception as error:
-        console.print(f"[red bold]Encountered error when trying to to load {template_file}: {error}")
+        print_substep(f"[red bold]Encountered error when trying to to load {template_file}: {error}")
         return False
     try:
         config = toml.load(config_file)
     except toml.TomlDecodeError:
-        console.print(
-            f"""[blue]Couldn't read {config_file}.
-Overwrite it?(y/n)"""
+        print_substep(
+            f"""Couldn't read {config_file}.
+Overwrite it?(y/n)""",
+            style='blue'
         )
         if not input().startswith("y"):
             print("Unable to read config, and not allowed to overwrite it. Giving up.")
@@ -129,34 +130,38 @@ Overwrite it?(y/n)"""
                 with open(config_file, "w") as f:
                     f.write("")
             except:
-                console.print(
-                    f"[red bold]Failed to overwrite {config_file}. Giving up.\nSuggestion: check {config_file} permissions for the user."
+                print_substep(
+                    f"Failed to overwrite {config_file}. Giving up.\nSuggestion: check {config_file} permissions for the user.",
+                    style='red bold'
                 )
                 return False
     except FileNotFoundError:
-        console.print(
-            f"""[blue]Couldn't find {config_file}
-Creating it now."""
+        print_substep(
+            f"""Couldn't find {config_file}
+Creating it now.""",
+            style='blue'
         )
         try:
             with open(config_file, "x") as f:
                 f.write("")
             config = {}
         except:
-            console.print(
-                f"[red bold]Failed to write to {config_file}. Giving up.\nSuggestion: check the folder's permissions for the user."
+            print_substep(
+                f"Failed to write to {config_file}. Giving up.\nSuggestion: check the folder's permissions for the user.",
+                style='red bold'
             )
             return False
 
-    console.print(
+    print_substep(
         """\
-[blue bold]###############################
+###############################
 #                             #
 # Checking TOML configuration #
 #                             #
 ###############################
 If you see any prompts, that means that you have unset/incorrectly set variables, please input the correct values.\
-"""
+""",
+    style='blue bold'
     )
     crawl(template, check_vars)
     with open(config_file, "w") as f:

@@ -99,8 +99,10 @@ def imagemaker(theme, reddit_obj: dict, txtclr, padding=5, transparent=False, re
                 image = Image.new("RGBA", size, theme)
                 sub_text = process_text(sub_text, False)
                 draw_multiple_line_text(image, sub_text, font, txtclr, padding, wrap=25, transparent=transparent)
-                image.save(f"assets/temp/{id}/png/img{idx}-{i+1}.png")
+                try: image.save(f"assets/temp/{id}/png/img{idx}-{i+1}.png")
+                except: print("Error saving image")
                 weights[f"{idx}-{i+1}"] = round(len(sub_text) / total_text_length, 3)
+                print(f"{idx}-{i+1} =", weights[f"{idx}-{i+1}"])
         else:
             image = Image.new("RGBA", size, theme)
             text = process_text(text, False)
