@@ -66,13 +66,13 @@ def generate_image(prompt, save_path):
         with open(save_path, 'wb') as file:
             file.write(image)
     except Exception:
-        return "./assets/CreepyChronicleClub.png"
+        return
     return save_path
 
 def add_text(thumbnail_path, text, save_path):
     bg = "./assets/backgrounds/background.jpg"
     if thumbnail_path is None:
-        thumbnail_path = "./thumbnail_bg.png"
+        thumbnail_path = "./CreepyChronicleClub.png"
     
     img1 = Image.open(bg).convert("RGBA")
     img2 = Image.open(thumbnail_path).resize((720, 720)).convert("RGBA")
