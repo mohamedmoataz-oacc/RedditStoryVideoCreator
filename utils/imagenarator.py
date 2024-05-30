@@ -91,6 +91,7 @@ def imagemaker(theme, reddit_obj: dict, txtclr, padding=5, transparent=False, re
     image.save(f"assets/temp/{id}/png/title.png")
 
     weights = dict()
+    total_imgs = 0
     for idx, text in track(enumerate(texts), "Rendering Image"):
         if isinstance(text, tuple):
             total_text_length = sum(len(t) for t in text)
@@ -103,11 +104,14 @@ def imagemaker(theme, reddit_obj: dict, txtclr, padding=5, transparent=False, re
                 except: print("Error saving image")
                 weights[f"{idx}-{i+1}"] = round(len(sub_text) / total_text_length, 3)
                 print(f"{idx}-{i+1} =", weights[f"{idx}-{i+1}"])
+            total_imgs += len(text)
         else:
             image = Image.new("RGBA", size, theme)
             text = process_text(text, False)
             draw_multiple_line_text(image, text, font, txtclr, padding, wrap=25, transparent=transparent)
             image.save(f"assets/temp/{id}/png/img{idx}.png")
+            total_imgs += 1
+    print("Total number of images:", total_imgs)
     
     with open(f"assets/temp/{id}/weights.json", 'w') as file:
         file.write(json.dumps(weights, indent=4))

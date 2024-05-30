@@ -6,6 +6,7 @@ from os.path import exists  # Needs to be imported specifically
 from typing import Final
 from typing import Tuple, Dict
 import glob
+from tqdm import tqdm
 
 import ffmpeg
 import translators
@@ -459,6 +460,197 @@ def make_final_video(
 
         old_percentage = pbar.n
         pbar.update(100 - old_percentage)
+    pbar.close()
+    save_data(subreddit, filename + ".mp4", title, idx, background_config["video"][2])
+    print_step("Removing temporary files 🗑")
+    cleanups = cleanup(reddit_id)
+    print_substep(f"Removed {cleanups} temporary files 🗑")
+    print_step("Done! 🎉 The video is in the results folder 📁")
+    return path
+
+
+def make_storymode_video(
+    number_of_clips: int,
+    length: int,
+    reddit_obj: dict,
+    background_config: Dict[str, Tuple],
+    reel = False
+):
+    """Gathers audio clips, gathers all screenshots, stitches them together and saves the final video to assets/temp
+    Args:
+        number_of_clips (int): Index to end at when going through the screenshots'
+        length (int): Length of the video
+        reddit_obj (dict): The reddit object that contains the posts to read.
+        background_config (Tuple[str, str, str, Any]): The background config to use.
+    """
+
+    title = re.sub(r"[^\w\s-]", "", reddit_obj["thread_title"])
+    filename = f"{name_normalize(title)[:251]}"
+    idx = re.sub(r"[^\w\s-]", "", reddit_obj["thread_id"])
+    subreddit = settings.config["reddit"]["thread"]["subreddit"]
+
+    if settings.config["settings"]["debug"]["reuse_video"]:
+        p = f'results/{subreddit}' + f"/{filename}"
+        print(p[:251] + ".mp4")
+        return p[:251] + ".mp4"
+    
+    if not exists(f"./results/{subreddit}"):
+        print_substep(f"The 'results/{subreddit}' folder could not be found so it was automatically created.")
+        os.makedirs(f"./results/{subreddit}")
+
+    W: Final[int] = 1920
+    H: Final[int] = 1080
+    if reel: W, H = H, W
+    
+    reddit_id = re.sub(r"[^\w\s-]", "", reddit_obj["thread_id"])
+
+    print_step("Creating the final video 🎥")
+    background_clip = ffmpeg.input(f"assets/temp/{reddit_id}/background.mp4")
+
+    # Gather all audio clips
+    if not settings.config["settings"]["debug"]["reuse_mp3"]:
+        audio_clips = [
+            ffmpeg.input(f"assets/temp/{reddit_id}/mp3/postaudio-{i}.mp3")
+            for i in track(range(number_of_clips + 1), "Collecting the audio files...")
+        ]
+        audio_clips.insert(0, ffmpeg.input(f"assets/temp/{reddit_id}/mp3/title.mp3"))
+    
+        audio_concat = ffmpeg.concat(*audio_clips, a=1, v=0)
+        ffmpeg.output(
+            audio_concat, f"assets/temp/{reddit_id}/audio.mp3", **{"b:a": "192k"}
+        ).overwrite_output().run(quiet=True)
+
+    console.log(f"[bold green] Video Will Be: {length} Seconds Long")
+
+    if reel: screenshot_width = int((W * 45) // 100)
+    else: screenshot_width = W
+
+    print("Merging background audio...")
+    audio = ffmpeg.input(f"assets/temp/{reddit_id}/audio.mp3")
+    final_audio = merge_background_audio(audio, reddit_id)
+
+    audio_clips_durations = [
+        float(
+            ffmpeg.probe(f"assets/temp/{reddit_id}/mp3/postaudio-{i}.mp3")["format"]["duration"]
+        )
+        for i in range(number_of_clips)
+    ]
+    audio_clips_durations.insert(
+        0,
+        float(ffmpeg.probe(f"assets/temp/{reddit_id}/mp3/title.mp3")["format"]["duration"]),
+    )
+
+    background_clip = background_clip.overlay(
+        ffmpeg.input(f"assets/temp/{reddit_id}/png/title.png")["v"].filter("scale", screenshot_width, -1),
+        enable=f"between(t,0,{audio_clips_durations[0]})",
+        x="(main_w-overlay_w)/2",
+        y="(main_h-overlay_h)/2",
+    )
+    current_time = audio_clips_durations[0]
+
+    with open(f"assets/temp/{reddit_id}/weights.json", 'r') as file:
+        weights = json.loads(file.read())
+
+    print_step("Rendering the video 🎥")
+    
+    path = f"results/{subreddit}/{filename}"[:251] + ".mp4"
+    num_images = 0
+    run_flag = False
+    for i in tqdm(range(1, number_of_clips + 1)):
+        sub_images = glob.glob(f"assets/temp/{reddit_id}/png/img{i-1}-*.png") # Get all sub images
+        if sub_images:
+            vid_time = current_time
+            for image in sub_images:
+                weight_id = image.split("img")[-1][:-4]
+                image = (
+                    ffmpeg.input(image)["v"].filter("scale", screenshot_width, -1),
+                    weights[weight_id]
+                )
+                
+                background_clip = background_clip.overlay(
+                    image[0],
+                    enable=f"between(t,{vid_time},{vid_time + audio_clips_durations[i] * image[1]})",
+                    x="(main_w-overlay_w)/2",
+                    y="(main_h-overlay_h)/2",
+                )
+                vid_time += audio_clips_durations[i] * image[1]
+                num_images += 1
+                if num_images % 70 == 0: run_flag = True
+        else:
+            image = ffmpeg.input(f"assets/temp/{reddit_id}/png/img{i-1}.png")["v"].filter(
+                "scale", screenshot_width, -1
+            )
+            background_clip = background_clip.overlay(
+                image,
+                enable=f"between(t,{current_time},{current_time + audio_clips_durations[i]})",
+                x="(main_w-overlay_w)/2",
+                y="(main_h-overlay_h)/2",
+            )
+            num_images += 1
+            if num_images % 70 == 0: run_flag = True
+        current_time += audio_clips_durations[i]
+
+        if run_flag:
+            background_clip = background_clip.filter("scale", W, H)
+            try:
+                ffmpeg.output(
+                    background_clip,
+                    f"assets/temp/{reddit_id}/temp_output.mp4",
+                    f="mp4",
+                    **{
+                        "c:v": "libx264",
+                        "threads": multiprocessing.cpu_count(),
+                    },
+                ).overwrite_output().run(
+                    overwrite_output=True,
+                    capture_stdout=True,
+                    capture_stderr=True,
+                )
+            except ffmpeg.Error as e:
+                print('stderr:', e.stderr.decode('utf8'))
+                raise e
+            
+            if os.path.exists(f"assets/temp/{reddit_id}/temp_input.mp4"):
+                os.remove(f"assets/temp/{reddit_id}/temp_input.mp4")
+            os.rename(
+                f"assets/temp/{reddit_id}/temp_output.mp4",
+                f"assets/temp/{reddit_id}/temp_input.mp4"
+            )
+            background_clip = ffmpeg.input(f"assets/temp/{reddit_id}/temp_input.mp4")
+            run_flag = False
+
+
+    print_step("Final Step - Merging video & audio 🎥")
+    pbar = tqdm(total=100, desc="Progress: ", bar_format="{l_bar}{bar}", unit=" %")
+
+    def on_update_example(progress) -> None:
+        status = round(progress * 100, 2)
+        old_percentage = pbar.n
+        pbar.update(status - old_percentage)
+    
+    with ProgressFfmpeg(length, on_update_example) as progress:
+        background_clip = background_clip.filter("scale", W, H)
+        ffmpeg.output(
+            background_clip,
+            final_audio,
+            path,
+            f="mp4",
+            **{
+                "c:v": "libx264",
+                # "b:v": "2M",
+                # "b:a": "192k",
+                "crf": "32",
+                "threads": multiprocessing.cpu_count(),
+            },
+        ).overwrite_output().global_args("-progress", progress.output_file.name).run(
+            quiet=True,
+            overwrite_output=True,
+            capture_stdout=False,
+            capture_stderr=False,
+        )
+    
+    old_percentage = pbar.n
+    pbar.update(100 - old_percentage)
     pbar.close()
     save_data(subreddit, filename + ".mp4", title, idx, background_config["video"][2])
     print_step("Removing temporary files 🗑")

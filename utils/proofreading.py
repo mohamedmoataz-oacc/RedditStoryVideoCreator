@@ -10,8 +10,8 @@ genai.configure(api_key=settings.config["ai"]["gemini_api_key"])
 model = genai.GenerativeModel('gemini-pro')
 
 prompt = """Can you please proof read this text while keeping the context the same.
-Only respond with the proofread text.
 If any part of the text wasn't human understandable remove it.
+Only respond with the proofread text or an empty message.
 Here it is:
 """
 
@@ -24,14 +24,13 @@ def proofread_post(post):
         while not succeeded:
             try:
                 proofread_post_part = model.generate_content(prompt + post_part)
+                succeeded = True
             except google.api_core.exceptions.ResourceExhausted:
                 print_substep(
                     " Resource Exhausted when proofreading the post. Sleeping for a few seconds...",
                     style="bold red"
                 )
-                time.sleep(62)
-                proofread_post_part = model.generate_content(prompt + post_part)
-                # time.sleep(1)
+                time.sleep(61)
         
         try:
             proofread_post_part = proofread_post_part.text

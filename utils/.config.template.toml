@@ -40,8 +40,9 @@ debug = { optional = false, type = "bool", default = false, example = false, opt
 reuse_separate_mp3s = { optional = false, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Use mp3 files from temp data" }
 reuse_mp3 = { optional = false, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Use the whole mp3 file from temp data" }
 reuse_images = { optional = false, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Use images from temp data" }
-reuse_background = { optional = false, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Use previously generated background audio & video." }
+reuse_background = { optional = false, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Use previously generated background audio & video" }
 reuse_video = { optional = false, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Use already generated video" }
+skip_thumbnail = { optional = false, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Skip the thumbnail generation" }
 no_youtube = { optional = false, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Upload to youtube" }
 
 [settings.background]

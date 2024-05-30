@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import datetime
 import math
 import os
 import shutil
@@ -24,7 +25,7 @@ from video_creation.background import (
     chop_background,
     get_background_config,
 )
-from video_creation.final_video import make_final_video
+from video_creation.final_video import make_final_video, make_storymode_video
 from video_creation.screenshot_downloader import get_screenshots_of_reddit_posts
 from video_creation.voices import save_text_to_mp3
 from utils.ffmpeg_install import ffmpeg_install
@@ -65,6 +66,7 @@ sys.stdout = Logger()
 
 def main(POST_ID=None) -> None:
     global redditid, reddit_object
+    start = time.time()
     reddit_object = get_subreddit_threads(POST_ID)
     redditid = id(reddit_object)
     if not (settings.config["settings"]["debug"]["reuse_images"] and
@@ -73,15 +75,16 @@ def main(POST_ID=None) -> None:
     post_text = ' '.join(reddit_object['thread_post'])
 
     if not os.path.exists(f"./assets/temp/{reddit_object['thread_id']}/"):
+        exceptions = ("debug", "no_youtube", "skip_thumbnail")
         for key in settings.config["settings"]["debug"].keys():
-            if key != "debug" and key != "no_youtube":
+            if key not in exceptions:
                 settings.config["settings"]["debug"][key] = False
 
     length, number_of_comments = save_text_to_mp3(reddit_object)
     length = math.ceil(length)
     reel = length <= 60
 
-    print(reddit_object['thread_post'])
+    # print(reddit_object['thread_post'])
     get_screenshots_of_reddit_posts(reddit_object, number_of_comments, reel)
     if not settings.config["settings"]["debug"]["reuse_background"]:
         bg_config = {
@@ -96,22 +99,29 @@ def main(POST_ID=None) -> None:
             "video": ["debug mode", "debug mode", "debug mode"],
             "audio": ["debug mode", "debug mode", "debug mode"],
         }
-    video_path = make_final_video(number_of_comments, length, reddit_object, bg_config, reel)
+    video_path = make_storymode_video(number_of_comments, length, reddit_object, bg_config, reel)
     if not video_path: return False
+
+    time_taken = (time.time() - start) // 60
+    print_substep(f"The video was created successfully in {time_taken} minutes! 🎉", style="bold green")
+    print("")
 
     video_data, thumbnail_text = get_video_data(post_text, bg_config)
     print("Video title:", video_data['title'])
     print("Video description:", video_data['description'])
     print("Video tags:", video_data['tags'])
     
-    print_substep(f"Generating thumbnail...")
-    thumbnail = generate_image(thumbnail_text, f"./assets/temp/{reddit_object['thread_id']}/thumbnail_image.png")
-    thumbnail = add_text(
-        thumbnail_path=thumbnail,
-        text=video_data["thumbnail_text"],
-        save_path=f"./assets/temp/{reddit_object['thread_id']}/thumbnail.png"
-    )
-    print_substep(f"Thumbnail generated successfully at: {thumbnail}", style="bold green")
+    if not settings.config["settings"]["debug"]["skip_thumbnail"]:
+        print_substep(f"Generating thumbnail...")
+        thumbnail = generate_image(thumbnail_text, f"./assets/temp/{reddit_object['thread_id']}/thumbnail_image.png")
+        thumbnail = add_text(
+            thumbnail_path=thumbnail,
+            text=video_data["thumbnail_text"],
+            save_path=f"./assets/temp/{reddit_object['thread_id']}/thumbnail.png"
+        )
+        print_substep(f"Thumbnail generated successfully at: {thumbnail}", style="bold green")
+    else: thumbnail = None
+    
     if not settings.config["settings"]["debug"]["no_youtube"]:
         upload_video_to_youtube(video_path, video_data, thumbnail)
 
@@ -152,20 +162,22 @@ def run():
         # main()
         status = False
         while not status:
-            try: status = main()
+            try:
+                status = main()
             except Exception as e:
                 print(e)
             print("Status:", status)
-    
-    print_substep("The video was created successfully! 🎉", style="bold green")
+
+    next_run = datetime.datetime.now() + datetime.timedelta(hours=int(settings.config["settings"]["run_every"]))
+    next_run = f"{('0' + str(next_run.hour))[-2:]}:{('0' + str(next_run.minute))[-2:]}"
     print_substep(
-        f'Next run will be in {settings.config["settings"]["run_every"]} hours.',
+        f'Next run will be in {settings.config["settings"]["run_every"]} hours (on {next_run}).',
         style="bold green"
     )
 
 
 if __name__ == "__main__":
-    if sys.version_info.major != 3 or sys.version_info.minor not in [10, 11]:
+    if sys.version_info.major != 3 or sys.version_info.minor != 10:
         print(
             "Hey! Congratulations, you've made it so far (which is pretty rare with no Python 3.10). Unfortunately, this program only works on Python 3.10. Please install Python 3.10 and try again."
         )

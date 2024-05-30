@@ -39,12 +39,12 @@ def save_text_to_mp3(reddit_obj) -> Tuple[int, int]:
     """
 
     if settings.config["settings"]["debug"]["reuse_separate_mp3s"]:
-        comments = len(glob.glob(f"./assets/temp/{reddit_obj['thread_id']}/mp3/*")) - 2
-        duration = 0
         audios = glob.glob(f"./assets/temp/{reddit_obj['thread_id']}/mp3/*")
+        comments = len(audios) - 2
+        duration = 0
         for audio in audios:
             audio = AudioSegment.from_mp3(audio)
-            duration += audio.duration_seconds + settings.config["settings"]["tts"]["silence_duration"]
+            duration += audio.duration_seconds
         return duration, comments
 
     voice = settings.config["settings"]["tts"]["voice_choice"]
