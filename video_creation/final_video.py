@@ -552,11 +552,19 @@ def make_storymode_video(
         weights = json.loads(file.read())
 
     print_step("Rendering the video 🎥")
+    num_images = len(glob.glob(f"assets/temp/{reddit_id}/png/*.png"))
+    print(f"Video will be rendered in {num_images//70} iterations")
+
+    def on_update_example(progress) -> None:
+        status = round(progress * 100, 2)
+        old_percentage = pbar.n
+        pbar.update(status - old_percentage)
     
     path = f"results/{subreddit}/{filename}"[:251] + ".mp4"
     num_images = 0
+    current_iteration = 1
     run_flag = False
-    for i in tqdm(range(1, number_of_clips + 1)):
+    for i in range(1, number_of_clips + 1):
         sub_images = glob.glob(f"assets/temp/{reddit_id}/png/img{i-1}-*.png") # Get all sub images
         if sub_images:
             vid_time = current_time
@@ -575,7 +583,7 @@ def make_storymode_video(
                 )
                 vid_time += audio_clips_durations[i] * image[1]
                 num_images += 1
-                if num_images % 70 == 0: run_flag = True
+                if num_images != 0 and num_images % 70 == 0: run_flag = True
         else:
             image = ffmpeg.input(f"assets/temp/{reddit_id}/png/img{i-1}.png")["v"].filter(
                 "scale", screenshot_width, -1
@@ -587,29 +595,35 @@ def make_storymode_video(
                 y="(main_h-overlay_h)/2",
             )
             num_images += 1
-            if num_images % 70 == 0: run_flag = True
+            if num_images != 0 and num_images % 70 == 0: run_flag = True
         current_time += audio_clips_durations[i]
 
         if run_flag:
-            background_clip = background_clip.filter("scale", W, H)
-            try:
-                ffmpeg.output(
-                    background_clip,
-                    f"assets/temp/{reddit_id}/temp_output.mp4",
-                    f="mp4",
-                    **{
-                        "c:v": "libx264",
-                        "threads": multiprocessing.cpu_count(),
-                    },
-                ).overwrite_output().run(
-                    overwrite_output=True,
-                    capture_stdout=True,
-                    capture_stderr=True,
-                )
-            except ffmpeg.Error as e:
-                print('stderr:', e.stderr.decode('utf8'))
-                raise e
-            
+            pbar = tqdm(total=100, desc=f"Iteration {current_iteration}: ", bar_format="{l_bar}{bar}", unit=" %")
+            with ProgressFfmpeg(length, on_update_example) as progress:
+                background_clip = background_clip.filter("scale", W, H)
+                try:
+                    ffmpeg.output(
+                        background_clip,
+                        f"assets/temp/{reddit_id}/temp_output.mp4",
+                        f="mp4",
+                        **{
+                            "c:v": "libx264",
+                            "threads": multiprocessing.cpu_count(),
+                        },
+                    ).overwrite_output().global_args("-progress", progress.output_file.name).run(
+                        overwrite_output=True,
+                        capture_stdout=True,
+                        capture_stderr=True,
+                    )
+                except ffmpeg.Error as e:
+                    print('stderr:', e.stderr.decode('utf8'))
+                    raise e
+                
+            old_percentage = pbar.n
+            pbar.update(100 - old_percentage)
+            pbar.close()
+                
             if os.path.exists(f"assets/temp/{reddit_id}/temp_input.mp4"):
                 os.remove(f"assets/temp/{reddit_id}/temp_input.mp4")
             os.rename(
@@ -618,15 +632,11 @@ def make_storymode_video(
             )
             background_clip = ffmpeg.input(f"assets/temp/{reddit_id}/temp_input.mp4")
             run_flag = False
+            current_iteration += 1
 
 
     print_step("Final Step - Merging video & audio 🎥")
     pbar = tqdm(total=100, desc="Progress: ", bar_format="{l_bar}{bar}", unit=" %")
-
-    def on_update_example(progress) -> None:
-        status = round(progress * 100, 2)
-        old_percentage = pbar.n
-        pbar.update(status - old_percentage)
     
     with ProgressFfmpeg(length, on_update_example) as progress:
         background_clip = background_clip.filter("scale", W, H)
